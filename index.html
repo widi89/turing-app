@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TuringApp - Companion Touring Rombongan</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS & JS for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0b0f19;
+            color: #f8fafc;
+            user-select: none;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: 100dvh;
+            max-width: 100%;
+            margin: 0 auto;
+            background: #0b0f19;
+            position: relative;
+            overflow: hidden;
+        }
+
+        @media (min-width: 768px) {
+            .app-container {
+                flex-direction: row;
+            }
+            #map-section {
+                flex: 1;
+                height: 100% !important;
+            }
+            #dashboard-section {
+                width: 380px;
+                height: 100% !important;
+                border-top: none !important;
+                border-left: 1px solid #1e293b;
+            }
+        }
+
+        #map-section {
+            flex: 1;
+            height: 50%;
+            position: relative;
+            z-index: 1;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            background-color: #1e293b;
+        }
+
+        #dashboard-section {
+            height: 50%;
+            background: #0f172a;
+            border-top: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+            z-index: 2;
+        }
+
+        .avatar-marker {
+            position: relative;
+            width: 44px;
+            height: 44px;
+        }
+        
+        .avatar-marker-img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 3px solid #3b82f6;
+            object-fit: cover;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            background: #fff;
+        }
+
+        .avatar-marker.is-lead .avatar-marker-img {
+            border-color: #f59e0b;
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.4);
+        }
+
+        .avatar-marker.is-speeding .avatar-marker-img {
+            border-color: #ef4444;
+            animation: pulse-red 0.8s infinite alternate;
+        }
+
+        .lead-badge {
+            position: absolute;
+            top: -5px;
+            right: -3px;
+            background: #f59e0b;
+            color: #000;
+            font-size: 8px;
+            font-weight: 800;
+            padding: 1px 4px;
+            border-radius: 6px;
+            border: 1px solid #fff;
+        }
+
+        .speed-tag {
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            color: #fff;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 0px 5px;
+            border-radius: 8px;
+            white-space: nowrap;
+            border: 1px solid #334155;
+        }
+
+        @keyframes pulse-red {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); }
+            100% { transform: scale(1.15); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+        }
+
+        .custom-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <!-- TOP / LEFT: LIVE MAP SECTION -->
+    <div id="map-section">
+        <!-- Top Navigation Bar & Route Info -->
+        <div class="absolute top-3 left-3 right-3 z-[1000] flex flex-col gap-2">
+            <div class="flex justify-between items-center bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-800 shadow-xl">
+                
+                <!-- RUTE BAR & TOMBOL GIR (GEAR) PENGATURAN TUJUAN -->
+                <div class="flex items-center space-x-2">
+                    <span class="relative flex h-2.5 w-2.5">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <div>
+                            <p class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">RUTE TOURING</p>
+                            <p class="font-bold text-xs text-white" id="route-name-display">Puncak Touring Line</p>
+                        </div>
+                        
+                        <!-- TOMBOL GEAR PENGATURAN RUTE -->
+                        <button onclick="openRouteModal()" title="Pengaturan Rute & Tujuan" class="ml-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 p-1.5 rounded-lg flex items-center justify-center transition-all active:scale-95">
+                            <i class="fa-solid fa-gear text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Party Code & User Profile Menu -->
+                <div class="flex items-center gap-2">
+                    <button onclick="copyPartyCode()" title="Salin Kode Party" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 text-[11px] font-mono font-bold px-2 py-1 rounded-lg flex items-center gap-1.5">
+                        <i class="fa-solid fa-key"></i>
+                        <span id="header-party-code">------</span>
+                    </button>
+                    
+                    <button onclick="toggleUserDropdown()" class="w-8 h-8 rounded-full bg-slate-800 border-2 border-emerald-500 overflow-hidden relative">
+                        <img id="header-user-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" class="w-full h-full object-cover">
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- DROPDOWN MENU USER (PROFIL & LOGOUT) -->
+        <div id="user-dropdown" class="absolute top-16 right-3 z-[1100] hidden bg-slate-900 border border-slate-700 rounded-xl p-3 w-48 shadow-2xl">
+            <div class="border-b border-slate-800 pb-2 mb-2">
+                <p class="font-bold text-xs text-white" id="dropdown-user-name">Pengguna</p>
+                <p class="text-[10px] text-slate-400" id="dropdown-user-bike">Kendaraan</p>
+            </div>
+            <button onclick="openAuthModal()" class="w-full text-left py-1.5 px-2 text-xs text-slate-300 hover:bg-slate-800 rounded-lg flex items-center gap-2">
+                <i class="fa-solid fa-user-gear text-amber-400"></i> Ganti Profil / Login
+            </button>
+            <button onclick="logoutUser()" class="w-full text-left py-1.5 px-2 text-xs text-red-400 hover:bg-red-950/30 rounded-lg flex items-center gap-2 mt-1">
+                <i class="fa-solid fa-right-from-bracket text-red-400"></i> Logout
+            </button>
+        </div>
+
+        <!-- Floating Action Map Controls -->
+        <div class="absolute bottom-4 right-4 z-[1000] flex flex-col gap-2">
+            <button onclick="getCurrentGPSLocation()" title="Lokasi Saya saat ini" class="w-10 h-10 bg-slate-900/90 text-blue-400 hover:text-white border border-slate-700 rounded-full shadow-lg flex items-center justify-center active:scale-95">
+                <i class="fa-solid fa-location-crosshairs text-sm"></i>
+            </button>
+            <button onclick="toggleMapType()" title="Ganti Tampilan Peta" class="w-10 h-10 bg-slate-900/90 text-slate-300 hover:text-white border border-slate-700 rounded-full shadow-lg flex items-center justify-center active:scale-95">
+                <i class="fa-solid fa-layer-group text-sm"></i>
+            </button>
+        </div>
+
+        <!-- Leaflet Map Container -->
+        <div id="map"></div>
+    </div>
+
+    <!-- BOTTOM / RIGHT: DASHBOARD & SPEEDBOARD SECTION -->
+    <div id="dashboard-section">
+        <!-- Dashboard Header -->
+        <div class="px-4 py-2.5 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-gauge-high text-amber-400 text-sm"></i>
+                <div>
+                    <h2 class="font-bold text-xs text-white tracking-wide">LIVE SPEEDBOARD</h2>
+                    <p class="text-[9px] text-slate-400"><span id="member-count">0</span> Rider Terhubung</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button onclick="openAddMemberModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-user-plus text-xs text-emerald-400"></i>
+                    <span>+ Anggota</span>
+                </button>
+                <button onclick="toggleSimulation()" id="sim-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded-lg text-[11px] flex items-center gap-1">
+                    <i class="fa-solid fa-play text-xs"></i>
+                    <span>Jalan</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Live Speedboard List -->
+        <div class="flex-1 overflow-y-auto px-3 py-2 space-y-2 custom-scroll" id="speedboard-list">
+            <!-- Dynamic members injected here -->
+        </div>
+
+        <!-- Voice PTT Bar -->
+        <div class="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-2">
+            <button id="ptt-btn" onmousedown="startPTT()" onmouseup="stopPTT()" ontouchstart="startPTT()" ontouchend="stopPTT()" class="w-full bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 active:bg-red-600 active:text-white transition-all">
+                <i class="fa-solid fa-microphone text-sm"></i>
+                <span>Tahan untuk Voice PTT</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: LOGIN / CREATE ACCOUNT / JOIN PARTY AWAL -->
+<div id="auth-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[3000] flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-5 text-white shadow-2xl">
+        <div class="text-center mb-4">
+            <div class="w-12 h-12 bg-amber-500/20 text-amber-400 rounded-2xl border border-amber-500/40 flex items-center justify-center mx-auto mb-2">
+                <i class="fa-solid fa-motorcycle text-xl"></i>
+            </div>
+            <h2 class="font-bold text-base text-white">Selamat Datang di TuringApp</h2>
+            <p class="text-xs text-slate-400 mt-1">Buat akun rider & gabung rombongan touring</p>
+        </div>
+
+        <!-- Tab Selection -->
+        <div class="flex bg-slate-800 p-1 rounded-xl mb-4 border border-slate-700">
+            <button id="tab-join-btn" onclick="switchAuthTab('join')" class="flex-1 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950">Join Party</button>
+            <button id="tab-create-btn" onclick="switchAuthTab('create')" class="flex-1 py-1.5 text-xs font-bold rounded-lg text-slate-400">Buat Party Baru</button>
+        </div>
+
+        <!-- Form Input -->
+        <div class="space-y-3">
+            <div id="party-code-input-group">
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Kode Party Touring (6 Angka):</label>
+                <input type="text" id="auth-party-code" placeholder="Misal: 735652" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono tracking-wider focus:outline-none focus:border-amber-400">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Nama / Nama Panggilan:</label>
+                <input type="text" id="auth-user-name" placeholder="Misal: Bro Budi" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Kendaraan / Motor:</label>
+                <input type="text" id="auth-user-bike" placeholder="Misal: Yamaha Aerox 155" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+            </div>
+
+            <div id="role-select-group" class="hidden">
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Peran dalam Party:</label>
+                <select id="auth-user-role" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+                    <option value="lead">Road Captain (Lead)</option>
+                    <option value="sweeper">Sweeper</option>
+                    <option value="member">Member</option>
+                </select>
+            </div>
+        </div>
+
+        <button onclick="submitAuth()" id="auth-submit-btn" class="w-full mt-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition-colors">
+            Masuk ke Party Touring
+        </button>
+    </div>
+</div>
+
+<!-- MODAL: PENGATURAN RUTE & TUJUAN (GIR ⚙️) -->
+<div id="route-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[2000] hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-4 text-white shadow-2xl">
+        <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
+            <h3 class="font-bold text-sm flex items-center gap-2">
+                <i class="fa-solid fa-route text-amber-400"></i> Pengaturan Rute & Tujuan
+            </h3>
+            <button onclick="closeRouteModal()" class="text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <div class="space-y-3">
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Lokasi Awal (Start):</label>
+                <div class="flex gap-2">
+                    <input type="text" id="start-input" placeholder="Misal: Depok, Jakarta" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+                    <button onclick="setStartToGPS()" class="bg-slate-800 border border-slate-700 text-blue-400 px-2.5 rounded-lg text-xs" title="Gunakan GPS"><i class="fa-solid fa-crosshairs"></i></button>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Lokasi Tujuan (Finish):</label>
+                <input type="text" id="finish-input" placeholder="Misal: Puncak, Bogor, Lembang" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+            </div>
+
+            <button onclick="searchAndApplyRoute()" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors">
+                <i class="fa-solid fa-magnifying-glass-location"></i> Cari & Terapkan Rute Custom
+            </button>
+
+            <div class="relative flex py-1 items-center">
+                <div class="flex-grow border-t border-slate-800"></div>
+                <span class="flex-shrink mx-2 text-[10px] text-slate-500">ATAU PILIH PRESET</span>
+                <div class="flex-grow border-t border-slate-800"></div>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Rute Populer:</label>
+                <select id="preset-route-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400">
+                    <option value="puncak">Jakarta/Depok - Puncak Bogor</option>
+                    <option value="lembang">Bandung - Lembang Raya</option>
+                    <option value="ancol">Depok - Ancol Jakarta</option>
+                    <option value="bedugul">Kuta - Bedugul Bali</option>
+                </select>
+            </div>
+        </div>
+
+        <button onclick="applyPresetRoute()" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 font-bold py-2 rounded-xl text-xs transition-colors">
+            Gunakan Preset Rute
+        </button>
+    </div>
+</div>
+
+<!-- MODAL: ADD MEMBER MANUAL -->
+<div id="add-member-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[2000] hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-4 text-white shadow-2xl">
+        <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
+            <h3 class="font-bold text-sm flex items-center gap-2">
+                <i class="fa-solid fa-user-plus text-emerald-400"></i> Tambah Anggota Rombongan
+            </h3>
+            <button onclick="closeAddMemberModal()" class="text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <div class="space-y-3">
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Nama Anggota / Alias:</label>
+                <input type="text" id="new-member-name" placeholder="Misal: Bro Budi" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Kendaraan / Motor:</label>
+                <input type="text" id="new-member-bike" placeholder="Misal: Honda CBR250RR" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-300 mb-1">Peran dalam Party:</label>
+                <select id="new-member-role" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400">
+                    <option value="member">Member</option>
+                    <option value="lead">Lead (Road Captain)</option>
+                    <option value="sweeper">Sweeper (Penutup)</option>
+                </select>
+            </div>
+        </div>
+
+        <button onclick="saveNewMember()" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 font-bold py-2 rounded-xl text-xs transition-colors">
+            Tambahkan ke Party
+        </button>
+    </div>
+</div>
+
+<!-- AUDIO PTT NOTIFICATION STATUS -->
+<div id="ptt-status" class="fixed top-16 left-1/2 -translate-x-1/2 z-[2500] hidden bg-red-600 text-white font-bold text-xs px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 border border-white/20">
+    <i class="fa-solid fa-microphone animate-pulse"></i>
+    <span id="ptt-text">Menyiarkan Suara...</span>
+</div>
+
+<script>
+    // --- STATE MANAGEMENT ---
+    let maxSpeedLimit = 80;
+    let isSimulating = false;
+    let simInterval = null;
+    let currentMapStyle = 'street';
+    let partyCode = "735652";
+    let authMode = "join"; // 'join' or 'create'
+    let currentUser = null;
+
+    // Presets Routes
+    const presetRoutes = {
+        puncak: {
+            name: "Puncak Touring Line",
+            waypoints: [
+                [-6.3932, 106.8286], // Depok Start
+                [-6.5971, 106.8060], // Bogor Kota
+                [-6.6993, 106.9211]  // Puncak Pass Finish
+            ]
+        },
+        lembang: {
+            name: "Bandung - Lembang",
+            waypoints: [
+                [-6.9034, 107.6102],
+                [-6.8624, 107.5952],
+                [-6.8160, 107.6180]
+            ]
+        },
+        ancol: {
+            name: "Depok - Ancol Coast",
+            waypoints: [
+                [-6.3932, 106.8286],
+                [-6.2088, 106.8456],
+                [-6.1256, 106.8383]
+            ]
+        },
+        bedugul: {
+            name: "Kuta - Bedugul Bali",
+            waypoints: [
+                [-8.7183, 115.1686],
+                [-8.5069, 115.2625],
+                [-8.2752, 115.1668]
+            ]
+        }
+    };
+
+    let activeRoute = presetRoutes.puncak;
+
+    // Initial Party Members
+    let partyMembers = [
+        {
+            id: "u1",
+            name: "Widi",
+            avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
+            isLead: true,
+            role: "Road Captain",
+            speed: 68,
+            progress: 0.35,
+            vehicle: "AEROX 155"
+        },
+        {
+            id: "u2",
+            name: "Siti Rider",
+            avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80",
+            isLead: false,
+            role: "Member",
+            speed: 92,
+            progress: 0.42,
+            vehicle: "Honda CBR250RR"
+        },
+        {
+            id: "u3",
+            name: "Bro Budi",
+            avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80",
+            isLead: false,
+            role: "Member",
+            speed: 75,
+            progress: 0.30,
+            vehicle: "Yamaha R15"
+        }
+    ];
+
+    // --- LEAFLET MAP INITIALIZATION ---
+    const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(activeRoute.waypoints[0], 11);
+
+    const tileLayers = {
+        street: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }),
+        satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 })
+    };
+    tileLayers.street.addTo(map);
+
+    let routePolyline = null;
+    let startMarker = null;
+    let finishMarker = null;
+    let memberMarkers = {};
+
+    function renderRouteOnMap() {
+        if (routePolyline) map.removeLayer(routePolyline);
+        if (startMarker) map.removeLayer(startMarker);
+        if (finishMarker) map.removeLayer(finishMarker);
+
+        routePolyline = L.polyline(activeRoute.waypoints, {
+            color: '#f59e0b',
+            weight: 5,
+            opacity: 0.9,
+            dashArray: '8, 8'
+        }).addTo(map);
+
+        const startPt = activeRoute.waypoints[0];
+        const finishPt = activeRoute.waypoints[activeRoute.waypoints.length - 1];
+
+        startMarker = L.circleMarker(startPt, { radius: 7, fillColor: "#10b981", color: "#fff", weight: 2, fillOpacity: 1 }).addTo(map);
+        finishMarker = L.circleMarker(finishPt, { radius: 7, fillColor: "#ef4444", color: "#fff", weight: 2, fillOpacity: 1 }).addTo(map);
+
+        map.fitBounds(routePolyline.getBounds(), { padding: [40, 40] });
+        document.getElementById('route-name-display').innerText = activeRoute.name;
+    }
+
+    function createCustomMarkerIcon(member) {
+        const isSpeeding = member.speed > maxSpeedLimit;
+        const leadBadge = member.isLead ? `<span class="lead-badge">LEAD</span>` : '';
+        
+        const html = `
+            <div class="avatar-marker ${member.isLead ? 'is-lead' : ''} ${isSpeeding ? 'is-speeding' : ''}">
+                <img src="${member.avatar}" class="avatar-marker-img">
+                ${leadBadge}
+                <span class="speed-tag">${member.speed} Km/h</span>
+            </div>
+        `;
+
+        return L.divIcon({
+            html: html,
+            className: 'custom-avatar-pin',
+            iconSize: [44, 44],
+            iconAnchor: [22, 22]
+        });
+    }
+
+    function updateMapMarkers() {
+        partyMembers.forEach(member => {
+            const point = interpolateRoutePoint(member.progress);
+
+            if (memberMarkers[member.id]) {
+                memberMarkers[member.id].setLatLng([point.lat, point.lng]);
+                memberMarkers[member.id].setIcon(createCustomMarkerIcon(member));
+            } else {
+                const marker = L.marker([point.lat, point.lng], { icon: createCustomMarkerIcon(member) }).addTo(map);
+                memberMarkers[member.id] = marker;
+            }
+        });
+    }
+
+    function interpolateRoutePoint(progress) {
+        const waypoints = activeRoute.waypoints;
+        const totalPoints = waypoints.length - 1;
+        const index = Math.min(Math.floor(progress * totalPoints), totalPoints - 1);
+        const nextIndex = Math.min(index + 1, totalPoints);
+        const segmentProgress = (progress * totalPoints) - index;
+
+        const p1 = waypoints[index];
+        const p2 = waypoints[nextIndex];
+
+        return {
+            lat: p1[0] + (p2[0] - p1[0]) * segmentProgress,
+            lng: p1[1] + (p2[1] - p1[1]) * segmentProgress
+        };
+    }
+
+    function renderSpeedboard() {
+        const sortedMembers = [...partyMembers].sort((a, b) => b.speed - a.speed);
+        const container = document.getElementById('speedboard-list');
+        container.innerHTML = '';
+
+        document.getElementById('member-count').innerText = partyMembers.length;
+        document.getElementById('header-party-code').innerText = partyCode;
+
+        sortedMembers.forEach((member, index) => {
+            const isSpeeding = member.speed > maxSpeedLimit;
+            const isSelf = currentUser && member.id === currentUser.id;
+            
+            const cardHtml = `
+                <div class="p-2.5 rounded-xl border transition-all flex items-center justify-between ${
+                    isSpeeding 
+                        ? 'bg-red-950/40 border-red-500/50' 
+                        : isSelf 
+                            ? 'bg-slate-800 border-amber-500/50' 
+                            : 'bg-slate-900/60 border-slate-800'
+                }">
+                    <div class="flex items-center space-x-2.5">
+                        <span class="text-xs font-black w-4 text-center ${index === 0 ? 'text-amber-400' : 'text-slate-500'}">
+                            #${index + 1}
+                        </span>
+                        
+                        <div class="relative">
+                            <img src="${member.avatar}" class="w-9 h-9 rounded-full object-cover border ${member.isLead ? 'border-amber-400' : 'border-slate-700'}">
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-xs text-white">${member.name} ${isSelf ? '<span class="text-[9px] text-amber-400">(Anda)</span>' : ''}</h4>
+                            <p class="text-[10px] text-slate-400">${member.vehicle} • <span class="text-amber-400/90">${member.role}</span></p>
+                        </div>
+                    </div>
+
+                    <div class="text-right">
+                        <span class="text-sm font-black tracking-tight ${isSpeeding ? 'text-red-400' : 'text-emerald-400'}">
+                            ${member.speed} <span class="text-[9px] font-normal text-slate-400">km/h</span>
+                        </span>
+                        ${isSpeeding 
+                            ? `<span class="block text-[8px] font-bold text-red-400 uppercase"><i class="fa-solid fa-triangle-exclamation"></i> Overspeed</span>` 
+                            : `<span class="block text-[8px] text-emerald-500">Normal</span>`
+                        }
+                    </div>
+                </div>
+            `;
+            container.innerHTML += cardHtml;
+        });
+    }
+
+    // --- AUTHENTICATION & LOGIN SYSTEM ---
+    function openAuthModal() {
+        document.getElementById('auth-modal').classList.remove('hidden');
+        document.getElementById('user-dropdown').classList.add('hidden');
+    }
+
+    function switchAuthTab(mode) {
+        authMode = mode;
+        const joinBtn = document.getElementById('tab-join-btn');
+        const createBtn = document.getElementById('tab-create-btn');
+        const codeGroup = document.getElementById('party-code-input-group');
+        const roleGroup = document.getElementById('role-select-group');
+        const submitBtn = document.getElementById('auth-submit-btn');
+
+        if (mode === 'join') {
+            joinBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950";
+            createBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-lg text-slate-400";
+            codeGroup.classList.remove('hidden');
+            roleGroup.classList.add('hidden');
+            submitBtn.innerText = "Masuk ke Party Touring";
+        } else {
+            createBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950";
+            joinBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-lg text-slate-400";
+            codeGroup.classList.add('hidden');
+            roleGroup.classList.remove('hidden');
+            submitBtn.innerText = "Buat Party Baru";
+        }
+    }
+
+    function submitAuth() {
+        const name = document.getElementById('auth-user-name').value;
+        const bike = document.getElementById('auth-user-bike').value;
+
+        if (!name) {
+            alert('Silakan masukkan nama Anda.');
+            return;
+        }
+
+        if (authMode === 'join') {
+            const inputCode = document.getElementById('auth-party-code').value;
+            if (inputCode) partyCode = inputCode;
+        } else {
+            partyCode = Math.floor(100000 + Math.random() * 900000).toString();
+        }
+
+        const newId = "me_" + Date.now();
+        const roleVal = authMode === 'create' ? document.getElementById('auth-user-role').value : 'member';
+
+        currentUser = {
+            id: newId,
+            name: name,
+            avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
+            isLead: roleVal === 'lead',
+            role: roleVal === 'lead' ? 'Road Captain' : roleVal === 'sweeper' ? 'Sweeper' : 'Member',
+            speed: 60,
+            progress: 0.15,
+            vehicle: bike || "Motor"
+        };
+
+        if (currentUser.isLead) {
+            partyMembers.forEach(m => m.isLead = false);
+        }
+
+        partyMembers.push(currentUser);
+
+        // Update Header User UI
+        document.getElementById('header-user-avatar').src = currentUser.avatar;
+        document.getElementById('dropdown-user-name').innerText = currentUser.name;
+        document.getElementById('dropdown-user-bike').innerText = currentUser.vehicle;
+
+        document.getElementById('auth-modal').classList.add('hidden');
+        updateMapMarkers();
+        renderSpeedboard();
+    }
+
+    function toggleUserDropdown() {
+        document.getElementById('user-dropdown').classList.toggle('hidden');
+    }
+
+    function logoutUser() {
+        if (currentUser) {
+            partyMembers = partyMembers.filter(m => m.id !== currentUser.id);
+            currentUser = null;
+        }
+        document.getElementById('user-dropdown').classList.add('hidden');
+        openAuthModal();
+        updateMapMarkers();
+        renderSpeedboard();
+    }
+
+    // --- RUTE MODAL & ROUTE SELECTION (GIR ⚙️) ---
+    function openRouteModal() {
+        document.getElementById('route-modal').classList.remove('hidden');
+    }
+
+    function closeRouteModal() {
+        document.getElementById('route-modal').classList.add('hidden');
+    }
+
+    function applyPresetRoute() {
+        const selectedKey = document.getElementById('preset-route-select').value;
+        if (presetRoutes[selectedKey]) {
+            activeRoute = presetRoutes[selectedKey];
+            renderRouteOnMap();
+            updateMapMarkers();
+            closeRouteModal();
+        }
+    }
+
+    async function searchAndApplyRoute() {
+        const originQuery = document.getElementById('start-input').value;
+        const destQuery = document.getElementById('finish-input').value;
+
+        if (!originQuery || !destQuery) {
+            alert('Silakan isi lokasi awal dan tujuan terlebih dahulu.');
+            return;
+        }
+
+        try {
+            const startRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(originQuery)}`);
+            const startData = await startRes.json();
+
+            const finishRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destQuery)}`);
+            const finishData = await finishRes.json();
+
+            if (startData.length > 0 && finishData.length > 0) {
+                const startCoords = [parseFloat(startData[0].lat), parseFloat(startData[0].lon)];
+                const finishCoords = [parseFloat(finishData[0].lat), parseFloat(finishData[0].lon)];
+
+                activeRoute = {
+                    name: `${originQuery} - ${destQuery}`,
+                    waypoints: [startCoords, finishCoords]
+                };
+
+                renderRouteOnMap();
+                updateMapMarkers();
+                closeRouteModal();
+            } else {
+                alert('Lokasi tidak ditemukan. Coba ketik nama kota yang lebih spesifik.');
+            }
+        } catch (e) {
+            alert('Gagal mencari lokasi. Pastikan koneksi internet aktif.');
+        }
+    }
+
+    function setStartToGPS() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                document.getElementById('start-input').value = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+            });
+        }
+    }
+
+    function getCurrentGPSLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                map.flyTo([pos.coords.latitude, pos.coords.longitude], 14);
+            });
+        }
+    }
+
+    // --- ADD MEMBER MODAL ---
+    function openAddMemberModal() {
+        document.getElementById('add-member-modal').classList.remove('hidden');
+    }
+
+    function closeAddMemberModal() {
+        document.getElementById('add-member-modal').classList.add('hidden');
+    }
+
+    function saveNewMember() {
+        const name = document.getElementById('new-member-name').value;
+        const bike = document.getElementById('new-member-bike').value;
+        const roleSelect = document.getElementById('new-member-role').value;
+
+        if (!name) return;
+
+        const newMem = {
+            id: "u_" + Date.now(),
+            name: name,
+            avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80`,
+            isLead: roleSelect === 'lead',
+            role: roleSelect === 'lead' ? 'Road Captain' : roleSelect === 'sweeper' ? 'Sweeper' : 'Member',
+            speed: Math.floor(Math.random() * 30) + 50,
+            progress: 0.1,
+            vehicle: bike || "Motor"
+        };
+
+        if (newMem.isLead) {
+            partyMembers.forEach(m => m.isLead = false);
+        }
+
+        partyMembers.push(newMem);
+        updateMapMarkers();
+        renderSpeedboard();
+        closeAddMemberModal();
+    }
+
+    // --- SIMULATION ---
+    function toggleSimulation() {
+        isSimulating = !isSimulating;
+        const btn = document.getElementById('sim-btn');
+        if (isSimulating) {
+            btn.className = "bg-amber-600 hover:bg-amber-500 text-white font-bold px-2.5 py-1 rounded-lg text-[11px] flex items-center gap-1";
+            btn.innerHTML = `<i class="fa-solid fa-pause text-xs"></i><span>Stop</span>`;
+            
+            simInterval = setInterval(() => {
+                partyMembers.forEach(m => {
+                    m.speed = Math.max(30, Math.min(105, Math.round(m.speed + (Math.random() - 0.48) * 8)));
+                    m.progress += (m.speed / 40000);
+                    if (m.progress > 1) m.progress = 0;
+                });
+                updateMapMarkers();
+                renderSpeedboard();
+            }, 1000);
+        } else {
+            btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded-lg text-[11px] flex items-center gap-1";
+            btn.innerHTML = `<i class="fa-solid fa-play text-xs"></i><span>Jalan</span>`;
+            clearInterval(simInterval);
+        }
+    }
+
+    function toggleMapType() {
+        if (currentMapStyle === 'street') {
+            map.removeLayer(tileLayers.street);
+            tileLayers.satellite.addTo(map);
+            currentMapStyle = 'satellite';
+        } else {
+            map.removeLayer(tileLayers.satellite);
+            tileLayers.street.addTo(map);
+            currentMapStyle = 'street';
+        }
+    }
+
+    function startPTT() {
+        document.getElementById('ptt-status').classList.remove('hidden');
+    }
+
+    function stopPTT() {
+        document.getElementById('ptt-status').classList.add('hidden');
+    }
+
+    function copyPartyCode() {
+        navigator.clipboard.writeText(partyCode);
+        alert('Kode Party berhasil disalin: ' + partyCode);
+    }
+
+    // --- INIT ---
+    window.onload = () => {
+        renderRouteOnMap();
+        updateMapMarkers();
+        renderSpeedboard();
+    };
+</script>
+
+</body>
+</html>
